@@ -6,6 +6,7 @@ import { runMigrations } from '../packages/db/src/migrate.js';
 import { startControlCenter } from '../apps/control-center/src/index.js';
 import { resolveRuntimeUrls } from '../packages/common/src/runtime-config.js';
 import { startCloudflaredSafely } from '../packages/common/src/tunnel-command.js';
+import { startRenderGateway } from './render-gateway.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -99,6 +100,10 @@ const cc = await startControlCenter(8090);
 console.log('[3/3] Starting core production gateway services (Pure API & Android Observer)...\n');
 await cc.processManager.startAll();
 
+// Render exposes one public HTTP port per web service. Keep each app on its
+// existing internal port and publish them through a single path-based gateway.
+const renderGateway = startRenderGateway();
+
 console.log('====================================================');
 console.log(runInLocalhostMode
   ? '🟢 YOUPI PG V2 GATEWAY ONLINE & ACTIVE (localhost mode)'
@@ -131,6 +136,9 @@ const shutdown = async () => {
         tunnelProcess.kill('SIGTERM');
       }
     } catch {}
+  }
+  if (renderGateway) {
+    await new Promise(resolve => renderGateway.close(() => resolve()));
   }
   await cc.close();
   console.log('All processes terminated cleanly.');
